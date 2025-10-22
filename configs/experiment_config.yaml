@@ -1,0 +1,62 @@
+# Experiment Configuration Template
+
+# Platform settings
+platform:
+  name: "local_workstation"
+  cpu_governor: "userspace"  # userspace, performance, powersave
+  gpu_power_mode: "auto"
+  
+# Frequency sweep settings
+frequency_sweep:
+  cpu:
+    enabled: true
+    min_mhz: 1000
+    max_mhz: 4000
+    step_mhz: 200
+    # Or use available_frequencies: [1000, 1500, 2000, 2500, 3000]
+  
+  gpu:
+    enabled: false
+    min_mhz: 300
+    max_mhz: 1500
+    step_mhz: 100
+
+# Benchmark settings
+benchmarks:
+  - name: "dot_product_cpu"
+    executable: "./benchmarks/cpu/dot"
+    input_sizes: [1000, 10000, 100000, 1000000]
+    repetitions: 10
+    warmup_runs: 3
+  
+  - name: "memcpy_cpu"
+    executable: "./benchmarks/cpu/memcpy"
+    input_sizes: [1024, 10240, 102400, 1024000]
+    repetitions: 10
+    warmup_runs: 3
+
+# Measurement settings
+measurement:
+  energy:
+    rapl_domains: ["package-0", "dram"]
+    sample_interval_ms: 100
+  
+  performance:
+    perf_events: ["cycles", "instructions", "cache-misses", "L1-dcache-load-misses"]
+  
+  thermal:
+    monitor: true
+    max_temp_c: 85
+
+# Output settings
+output:
+  dataset_dir: "./data"
+  prefix: "exp"
+  format: "csv"
+  compress: false
+
+# Safety settings
+safety:
+  max_runtime_seconds: 300
+  thermal_throttle_check: true
+  power_limit_watts: 150

@@ -1,0 +1,80 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Data files (large CSVs, experiment results)
+data/*.csv
+data/*.dat
+data/*.bin
+!data/README.md
+!data/.gitkeep
+
+# Model files (can be large)
+models/*.joblib
+models/*.pkl
+models/*.h5
+models/*.onnx
+models/*.pt
+models/*.pth
+!models/README.md
+!models/.gitkeep
+
+# Compiled binaries
+benchmarks/**/*.o
+benchmarks/**/*.out
+benchmarks/**/a.out
+*.exe
+
+# CUDA compilation
+*.cubin
+*.fatbin
+*.ptx
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+*.out.txt
+*.err.txt
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Performance data
+perf.data
+perf.data.old
+
+# Environment variables
+.env
+.env.local
