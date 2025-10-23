@@ -67,10 +67,41 @@ Unidades: frecuencias en MHz, tiempo en segundos, energía en Joules, EDP en Jou
 
 - CPU control: `cpupower` / sysfs (`/sys/devices/system/cpu/cpu*/cpufreq/`)
 - CPU energy: RAPL (`turbostat`, `perf`, `pyRAPL`) or direct MSR via `msr-tools`
+- AMD energy: hwmon interface (`k10temp`, `zenpower`, `/sys/class/hwmon/`)
 - GPU control/medición (NVIDIA): `nvidia-smi`, `pynvml`
 - Intel GPU (local): `intel_gpu_top`, `intel_gpu_frequency` (si disponible), `IGT` tools
 - Perf profiling: `perf stat` para ciclos, instrucciones, cache-misses
+- Hardware monitoring: `/sys/class/hwmon/` for temperature and power sensors
 - Python libs: `pynvml`, `psutil`, `pandas`, `scikit-learn`, `xgboost`, `joblib`, `optuna`
+
+## Hardware Detection (Script: detect_hardware_v2.py)
+
+**Version:** 2.0 (Updated October 2025)
+
+El script `detect_hardware_v2.py` es una utilidad **read-only** y **no-intrusiva** para detección completa de hardware:
+
+**Características:**
+- Compatible Python 2.7+ y 3.x (CentOS 7 y Fedora)
+- Detección completa CPU/GPU/NUMA sin privilegios root
+- Detección de capacidades de energía: RAPL (Intel), hwmon (AMD)
+- **Detección avanzada AMD**: AMD uProf installation, version, MSR access, capabilities
+- Detección de sensores hwmon (temperatura, potencia)
+- Sistema de advertencias y recomendaciones automático con guías AMD-específicas
+- Salida JSON versionada (schema v2.0) + reporte legible
+
+**Outputs:**
+- `hardware_detect_report.json`: JSON estructurado con schema v2.0
+- Reporte de consola con advertencias contextuales
+
+**Documentación completa:**
+- Ver `docs/HARDWARE_DETECTOR_SPEC.md` (especificación técnica)
+- Ver `docs/AMD_PROFILING_GUIDE.md` (guía completa de profiling AMD)
+
+**AMD-Specific Features:**
+- Detecta instalación de AMD uProf (path, version, capabilities)
+- Verifica disponibilidad de MSR para profiling avanzado
+- Compara hwmon (k10temp/zenpower) vs AMD uProf capabilities
+- Proporciona recomendaciones específicas por generación (Zen2/Zen3/Zen4)
 
 ## Pipeline de experimentos (alto nivel)
 
