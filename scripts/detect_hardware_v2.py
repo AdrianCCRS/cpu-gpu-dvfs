@@ -330,17 +330,18 @@ class HardwareDetectorV2(object):
         
         # NVIDIA - try nvidia-smi first
         if which('nvidia-smi'):
-            rc, out, err = run_cmd(['nvidia-smi', '--query-gpu=name,memory.total,driver_version', '--format=csv,noheader'])
+            rc, out, err = run_cmd(['nvidia-smi', '--query-gpu=index,name,memory.total,driver_version', '--format=csv,noheader'])
             if rc == 0 and out:
                 for line in out.split('\n'):
                     if not line.strip():
                         continue
                     parts = [p.strip() for p in line.split(',')]
-                    if len(parts) >= 3:
+                    if len(parts) >= 4:
                         entry = {
-                            'name': parts[0],
-                            'memory': parts[1],
-                            'driver': parts[2],
+                            'index': int(parts[0]) if parts[0].isdigit() else parts[0],
+                            'name': parts[1],
+                            'memory': parts[2],
+                            'driver': parts[3],
                             'source': 'nvidia-smi'
                         }
                         gpu['nvidia'].append(entry)
@@ -626,7 +627,13 @@ class HardwareDetectorV2(object):
             print('  NVIDIA GPUs detected: {0}'.format(len(gpu.get('nvidia'))))
             for g in gpu.get('nvidia'):
                 if g.get('source') == 'nvidia-smi':
-                    print('   - {0}  mem:{1} driver:{2}'.format(g.get('name'), g.get('memory', 'N/A'), g.get('driver', 'N/A')))
+                    gpu_id = '[GPU {}] '.format(g.get('index')) if 'index' in g else ''
+                    print('   - {0}{1}  mem:{2} driver:{3}'.format(
+                        gpu_id,
+                        g.get('name'),
+                        g.get('memory', 'N/A'),
+                        g.get('driver', 'N/A')
+                    ))
                 else:
                     # lspci source
                     print('   - {0}  bus:{1} (detected via lspci)'.format(g.get('name'), g.get('bus_id', 'N/A')))
