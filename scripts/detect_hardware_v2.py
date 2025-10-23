@@ -327,9 +327,10 @@ class HardwareDetectorV2(object):
 
     def _detect_gpu(self):
         gpu = {'nvidia': [], 'amd': [], 'intel': []}
-        # NVIDIA
+        
+        # NVIDIA - try nvidia-smi first
         if which('nvidia-smi'):
-            rc, out, err = run_cmd(['nvidia-smi', '--query-gpu=name,memory.total,driver_version,minor_number', '--format=csv,noheader'])
+            rc, out, err = run_cmd(['nvidia-smi', '--query-gpu=name,memory.total,driver_version', '--format=csv,noheader'])
             if rc == 0 and out:
                 for line in out.split('\n'):
                     if not line.strip():
@@ -340,9 +341,14 @@ class HardwareDetectorV2(object):
                             'name': parts[0],
                             'memory': parts[1],
                             'driver': parts[2],
-                            'minor': parts[3] if len(parts) > 3 else None
+                            'source': 'nvidia-smi'
                         }
                         gpu['nvidia'].append(entry)
+        
+        # Fallback: Use lspci if nvidia-smi didn't find GPUs or doesn't exist
+        if not gpu['nvidia']:
+            self._detect_gpu_via_lspci(gpu)
+        
         # AMD (rocm-smi)
         if which('rocm-smi'):
             rc, out, err = run_cmd(['rocm-smi', '--showproductname'])
@@ -386,6 +392,71 @@ class HardwareDetectorV2(object):
                         gpu['intel'].append(intel_entry)
 
         self.info['gpu'] = gpu
+
+    def _detect_gpu_via_lspci(self, gpu):
+        """Fallback GPU detection using lspci (works without nvidia-smi)"""
+        # Try lspci
+        if which('lspci'):
+            rc, out, err = run_cmd(['lspci'])
+            if rc == 0 and out:
+                for line in out.split('\n'):
+                    line_lower = line.lower()
+                    
+                    # NVIDIA detection
+                    if 'nvidia' in line_lower and ('vga' in line_lower or '3d' in line_lower or 'display' in line_lower):
+                        # Parse lspci line: "08:00.0 3D controller: NVIDIA Corporation GF100GL [Tesla T20 Processor] (rev a3)"
+                        parts = line.split(':', 2)
+                        if len(parts) >= 3:
+                            gpu_name = parts[2].strip()
+                            # Extract model name (remove revision info)
+                            if '(rev' in gpu_name:
+                                gpu_name = gpu_name.split('(rev')[0].strip()
+                            
+                            entry = {
+                                'name': gpu_name,
+                                'bus_id': parts[0].strip(),
+                                'source': 'lspci',
+                                'note': 'Limited info - nvidia-smi not available or not working'
+                            }
+                            gpu['nvidia'].append(entry)
+                    
+                    # AMD detection
+                    elif ('amd' in line_lower or 'ati' in line_lower) and ('vga' in line_lower or '3d' in line_lower or 'display' in line_lower):
+                        # Skip non-GPU AMD devices (like ES1000 VGA controller used for remote management)
+                        if 'es1000' in line_lower:
+                            continue
+                        parts = line.split(':', 2)
+                        if len(parts) >= 3:
+                            gpu_name = parts[2].strip()
+                            if '(rev' in gpu_name:
+                                gpu_name = gpu_name.split('(rev')[0].strip()
+                            
+                            # Check if it's a real GPU (Radeon, Instinct, etc.) or management controller
+                            if any(x in line_lower for x in ['radeon', 'instinct', 'vega', 'navi', 'polaris']):
+                                entry = {
+                                    'name': gpu_name,
+                                    'bus_id': parts[0].strip(),
+                                    'source': 'lspci',
+                                    'note': 'Limited info - rocm-smi not available'
+                                }
+                                gpu['amd'].append(entry)
+                    
+                    # Intel discrete GPU detection (Arc, etc.)
+                    elif 'intel' in line_lower and ('vga' in line_lower or '3d' in line_lower or 'display' in line_lower):
+                        # Skip integrated graphics chipsets, focus on discrete GPUs
+                        if any(x in line_lower for x in ['arc', 'xe', 'dg']):
+                            parts = line.split(':', 2)
+                            if len(parts) >= 3:
+                                gpu_name = parts[2].strip()
+                                if '(rev' in gpu_name:
+                                    gpu_name = gpu_name.split('(rev')[0].strip()
+                                
+                                entry = {
+                                    'name': gpu_name,
+                                    'bus_id': parts[0].strip(),
+                                    'source': 'lspci'
+                                }
+                                gpu['intel'].append(entry)
 
     def _detect_hwmon(self):
         """Detect hwmon sensors for temperature and power monitoring"""
@@ -554,13 +625,27 @@ class HardwareDetectorV2(object):
         if gpu.get('nvidia'):
             print('  NVIDIA GPUs detected: {0}'.format(len(gpu.get('nvidia'))))
             for g in gpu.get('nvidia'):
-                print('   - {0}  mem:{1} driver:{2}'.format(g.get('name'), g.get('memory'), g.get('driver')))
+                if g.get('source') == 'nvidia-smi':
+                    print('   - {0}  mem:{1} driver:{2}'.format(g.get('name'), g.get('memory', 'N/A'), g.get('driver', 'N/A')))
+                else:
+                    # lspci source
+                    print('   - {0}  bus:{1} (detected via lspci)'.format(g.get('name'), g.get('bus_id', 'N/A')))
         else:
             print('  NVIDIA GPUs: none detected')
         if gpu.get('amd'):
             print('  AMD GPUs detected: {0}'.format(len(gpu.get('amd'))))
+            for g in gpu.get('amd'):
+                if 'bus_id' in g:
+                    print('   - {0}  bus:{1}'.format(g.get('name'), g.get('bus_id')))
+                else:
+                    print('   - {0}'.format(g.get('name', g.get('rocm_smi', 'Unknown'))))
         if gpu.get('intel'):
             print('  Intel GPU cards: {0}'.format(len(gpu.get('intel'))))
+            for g in gpu.get('intel'):
+                if 'bus_id' in g:
+                    print('   - {0}  bus:{1}'.format(g.get('name'), g.get('bus_id')))
+                else:
+                    print('   - {0}'.format(g.get('card', 'Unknown')))
 
         print('\nHardware Monitoring:')
         hwmon = self.info.get('hwmon', {})
