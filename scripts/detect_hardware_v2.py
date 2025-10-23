@@ -687,15 +687,77 @@ class HardwareDetectorV2(object):
 
 
 if __name__ == '__main__':
+    import argparse
+    
+    parser = argparse.ArgumentParser(
+        description='Hardware Detector v2 - Read-only hardware detection for HPC systems',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+Examples:
+  python detect_hardware_v2.py
+  python detect_hardware_v2.py --output-dir /path/to/output
+  python detect_hardware_v2.py -o ./results --quiet
+  python detect_hardware_v2.py --json-only
+        '''
+    )
+    parser.add_argument(
+        '-o', '--output-dir',
+        type=str,
+        default=None,
+        help='Directory to save the JSON report (default: script directory)'
+    )
+    parser.add_argument(
+        '-f', '--filename',
+        type=str,
+        default='hardware_detect_report.json',
+        help='Filename for the JSON report (default: hardware_detect_report.json)'
+    )
+    parser.add_argument(
+        '-q', '--quiet',
+        action='store_true',
+        help='Suppress console report, only save JSON'
+    )
+    parser.add_argument(
+        '--json-only',
+        action='store_true',
+        help='Only output JSON to stdout, no file saving or console report'
+    )
+    
+    args = parser.parse_args()
+    
     det = HardwareDetectorV2()
-    det.print_report()
-    # Save JSON next to script if desired
-    try:
-        outp = os.path.join(os.path.dirname(__file__), 'hardware_detect_report.json')
-    except Exception:
-        outp = 'hardware_detect_report.json'
+    
+    # Handle json-only mode
+    if args.json_only:
+        print(json.dumps(det.info, indent=2))
+        sys.exit(0)
+    
+    # Print console report unless quiet mode
+    if not args.quiet:
+        det.print_report()
+    
+    # Determine output path
+    if args.output_dir:
+        output_dir = os.path.abspath(args.output_dir)
+        # Create directory if it doesn't exist
+        if not os.path.exists(output_dir):
+            try:
+                os.makedirs(output_dir)
+            except Exception as e:
+                print('Error creating output directory: {0}'.format(e), file=sys.stderr)
+                sys.exit(1)
+        outp = os.path.join(output_dir, args.filename)
+    else:
+        # Save JSON next to script if no output dir specified
+        try:
+            outp = os.path.join(os.path.dirname(__file__), args.filename)
+        except Exception:
+            outp = args.filename
+    
     saved = det.to_json(outp)
     if saved:
-        print('Saved JSON to', outp)
+        if not args.quiet:
+            print('Saved JSON to', outp)
     else:
-        print('Could not save JSON (permissions?)')
+        print('Could not save JSON (permissions?)', file=sys.stderr)
+        sys.exit(1)
