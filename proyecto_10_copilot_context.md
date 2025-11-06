@@ -39,28 +39,40 @@ Ajuste Dinámico de Frecuencia (DVFS) en Sistemas Heterogéneos CPU–GPU median
 
 ## Formato de dataset (CSV)
 
-Campos sugeridos (columnas):
-- timestamp (ISO8601)
-- hostname
-- cpu_model
-- gpu_model
-- kernel_name
-- input_size
-- freq_cpu_MHz
-- freq_gpu_MHz
-- time_s
-- energy_J_cpu
-- energy_J_gpu
-- edp_Js
-- instructions
-- cycles
-- ipc
-- cache_misses
-- l1_misses
-- l2_misses
-- sm_util_percent (si aplica)
-- gpu_occupancy
-- run_id
+El script `run_sweep.py` genera automáticamente un CSV con las siguientes columnas:
+
+**Campos de identificación/contexto:**
+- `timestamp` (ISO8601) - Fecha/hora UTC de ejecución
+- `run_id` - ID único formato run_XXXXXX
+- `hostname` - Nodo del cluster
+- `cpu_model` - Modelo de CPU detectado
+- `gpu_model` - Modelo de GPU detectado
+- `kernel_name` - Nombre del benchmark ejecutado
+- `input_size` - Tamaño del problema (elementos)
+
+**Configuración experimental:**
+- `freq_cpu_MHz` - Frecuencia CPU configurada (MHz)
+- `freq_gpu_MHz` - Frecuencia GPU configurada (MHz)
+
+**Métricas de rendimiento:**
+- `time_s` - Tiempo de ejecución (segundos)
+- `instructions` - Instrucciones CPU ejecutadas (perf)
+- `cycles` - Ciclos CPU consumidos (perf)
+- `ipc` - Instructions per cycle (calculado)
+
+**Métricas de memoria:**
+- `cache_misses` - Total cache misses (perf)
+- `l1_misses` - L1 data cache load misses (perf)
+- `l2_misses` - LLC (last level cache) load misses (perf)
+
+**Métricas de energía:**
+- `energy_J_cpu` - Energía CPU en Joules (RAPL)
+- `energy_J_gpu` - Energía GPU en Joules (NVML)
+- `edp_Js` - Energy-Delay Product = energy_total × time
+
+**Métricas GPU (cuando aplica):**
+- `sm_util_percent` - Utilización de SMs GPU (%)
+- `gpu_occupancy` - Occupancy de warps (%)
 
 Unidades: frecuencias en MHz, tiempo en segundos, energía en Joules, EDP en Joules×segundos.
 
@@ -170,12 +182,13 @@ El script `detect_hardware_v2.py` es una utilidad **read-only** y **no-intrusiva
 - [x] Feature set para ML: 100 features definidos con rationale y estrategia de colección
 - [x] Caracterización de nodos del cluster HPC UIS (4 nodos documentados)
 - [x] Scripts de deployment automatizado para cluster
+- [x] Script de barrido automático de frecuencias (`run_sweep.py`) con perf instrumentation
 
 ### 🔄 En progreso
 - [ ] Implementación de microbenchmarks CPU/GPU
-- [ ] Scripts de automatización de experimentos (run_benchmark.py)
+- [ ] Validación de control de frecuencias (CPU/GPU) con permisos sudo
+- [ ] Integración de métricas GPU (NVML para energía y occupancy)
 - [ ] Colección de dataset inicial (MVP: 1000 samples)
-- [ ] Análisis exploratorio de datos
 
 ### 📋 Pendiente
 - [ ] Entrenamiento de modelos iniciales (RF/XGBoost)
