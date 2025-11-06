@@ -1,0 +1,1 @@
+timestamp,kernel_name,problem_size,iterations,gpu_core_clock_MHz,gpu_mem_clock_MHz,gpu_utilization_pct,occupancy,throughput_gflops,bandwidth_gbps,power_avg_w,energy_j,edp,gflops_per_watt,gpu_temp_c,ed2p
