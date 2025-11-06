@@ -47,9 +47,57 @@ fi
 # Build
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
-# Pass the detected NVCC to CMake to avoid compiler-not-found issues in some environments
-cmake .. -DCMAKE_CUDA_COMPILER="${NVCC}"
-make -j 2
+
+# Check if cmake is available
+if command -v cmake >/dev/null 2>&1; then
+    echo "Building with CMake..."
+    # Pass the detected NVCC to CMake to avoid compiler-not-found issues in some environments
+    cmake .. -DCMAKE_CUDA_COMPILER="${NVCC}"
+    make -j 2
+else
+    echo "CMake not found - using direct nvcc compilation (fallback mode)"
+    echo "Note: This builds only gemm_benchmark (simple version). For Google Benchmark version, install cmake."
+    
+    # Compile gemm_benchmark.cu directly
+    if [ -f "$ROOT_DIR/gemm_benchmark.cu" ]; then
+        echo "Compiling gemm_benchmark.cu..."
+        "$NVCC" -O3 -o "$BIN" "$ROOT_DIR/gemm_benchmark.cu"
+        echo "Built: $BIN"
+    else
+        echo "Error: gemm_benchmark.cu not found in $ROOT_DIR"
+        exit 1
+    fi
+    
+    # Try to compile gpu_monitor_nvml if NVML headers are available
+    MONITOR_SRC="$ROOT_DIR/gpu_monitor_nvml.cpp"
+    MONITOR_BIN="$BUILD_DIR/gpu_monitor_nvml"
+    if [ -f "$MONITOR_SRC" ]; then
+        echo "Attempting to compile gpu_monitor_nvml..."
+        # Try common NVML paths
+        NVML_INC=""
+        NVML_LIB=""
+        for inc_path in /usr/local/cuda/include /usr/local/cuda-*/include /opt/ohpc/pub/devtools/cuda/*/include; do
+            if [ -f "$inc_path/nvml.h" ]; then
+                NVML_INC="-I$inc_path"
+                break
+            fi
+        done
+        for lib_path in /usr/lib64/libnvidia-ml.so /usr/lib/x86_64-linux-gnu/libnvidia-ml.so; do
+            if [ -f "$lib_path" ]; then
+                NVML_LIB="-L$(dirname $lib_path) -lnvidia-ml"
+                break
+            fi
+        done
+        
+        if [ -n "$NVML_INC" ] && [ -n "$NVML_LIB" ]; then
+            g++ -O2 $NVML_INC -o "$MONITOR_BIN" "$MONITOR_SRC" $NVML_LIB 2>/dev/null && \
+                echo "Built: $MONITOR_BIN" || \
+                echo "Warning: Could not compile gpu_monitor_nvml (will use nvidia-smi fallback)"
+        else
+            echo "Warning: NVML headers/library not found (will use nvidia-smi fallback)"
+        fi
+    fi
+fi
 
 # Header CSV (GPU-focused; NO CPU columns)
 cat > "$OUTPUT_CSV" <<EOF
