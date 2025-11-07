@@ -4,24 +4,34 @@
   "gpu_frequencies": [405, 475, 550, 625, 700],
   "benchmarks": [
     {
-      "name": "dot_product",
+      "name": "cpu_dot_product",
       "cmd": "./benchmarks/cpu/dot {input_size}",
-      "type": "cpu"
+      "type": "cpu",
+      "description": "CPU dot product (compute-bound)"
     },
     {
-      "name": "memcpy",
+      "name": "cpu_memcpy",
       "cmd": "./benchmarks/cpu/memcpy {input_size}",
-      "type": "cpu"
+      "type": "cpu",
+      "description": "CPU memory copy (memory-bound)"
     },
     {
-      "name": "gpu_gemm",
-      "cmd": "./benchmarks/gpu/gemm {input_size}",
-      "type": "gpu"
+      "name": "gpu_gemm_naive",
+      "cmd": "./gpu_benchmark/build/gemm_benchmark {input_size} {input_size} {input_size} 10",
+      "type": "gpu",
+      "description": "GPU GEMM naive implementation (M K N iterations)"
+    },
+    {
+      "name": "gpu_gemm_google",
+      "cmd": "./gpu_benchmark/build/gemm_benchmark_google --benchmark_filter=BM_GEMM/{input_size} --benchmark_format=json",
+      "type": "gpu",
+      "description": "GPU GEMM with Google Benchmark (requires compilation with Google Benchmark)"
     },
     {
       "name": "gpu_stencil",
       "cmd": "./benchmarks/gpu/stencil {input_size}",
-      "type": "gpu"
+      "type": "gpu",
+      "description": "GPU stencil computation"
     }
   ],
   "input_sizes": [
@@ -33,5 +43,5 @@
   ],
   "repetitions": 5,
   "output_file": "data/frequency_sweep_results.csv",
-  "notes": "Adapted for guane15.uis.edu.co: Xeon E5645 (Westmere, 2010) with 8x Tesla M2075 (Fermi GF110). CPU: pcc-cpufreq driver, 1.6-2.4 GHz. GPU: Base 575 MHz, typical range 405-700 MHz. 5 CPU × 5 GPU × 4 benchmarks × 5 sizes × 5 reps = 2500 experiments. IMPORTANT: Verify actual GPU frequency support with 'nvidia-smi -q -d SUPPORTED_CLOCKS' before running. Old Tesla cards may have limited frequency steps."
+  "notes": "Adapted for guane15.uis.edu.co: Xeon E5645 (Westmere, 2010) with 8x Tesla M2075 (Fermi GF110). CPU: pcc-cpufreq driver, 1.6-2.4 GHz. GPU: Base 575 MHz, typical range 405-700 MHz. Benchmarks: CPU (dot, memcpy from benchmarks/cpu/), GPU (GEMM from gpu_benchmark/, stencil from benchmarks/gpu/). 5 CPU × 5 GPU × 5 benchmarks × 5 sizes × 5 reps = 3125 experiments. IMPORTANT: 1) Compile CPU benchmarks (gcc), 2) Build gpu_benchmark (cmake/nvcc), 3) Verify GPU frequency support with 'nvidia-smi -q -d SUPPORTED_CLOCKS', 4) Run test_sweep_guane15.json first to validate setup."
 }
