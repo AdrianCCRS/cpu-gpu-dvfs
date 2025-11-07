@@ -1,0 +1,16 @@
+{
+  "description": "TEST configuration for guane15 - verify frequency control works before full sweep",
+  "cpu_frequencies": [1600, 2400],
+  "gpu_frequencies": [405, 700],
+  "benchmarks": [
+    {
+      "name": "dot_product_test",
+      "cmd": "./benchmarks/cpu/dot {input_size}",
+      "type": "cpu"
+    }
+  ],
+  "input_sizes": [1000000],
+  "repetitions": 2,
+  "output_file": "data/test_sweep_guane15.csv",
+  "notes": "Mini test: 2 CPU × 2 GPU × 1 benchmark × 1 size × 2 reps = 8 experiments (~5 minutes). Run this FIRST to verify: 1) pcc-cpufreq frequency control works, 2) GPU frequency locking works, 3) turbostat energy measurement works, 4) Benchmark compiles and runs, 5) CSV output is correct. If all 8 experiments complete successfully, proceed to full sweep."
+}

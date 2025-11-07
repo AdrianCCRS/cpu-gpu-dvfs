@@ -49,6 +49,10 @@ class FrequencySweep:
         self.output_file = config.get('output_file', 'dataset.csv')
         self.perf_available = which('perf') is not None
         self.nvidia_smi_available = which('nvidia-smi') is not None
+        self.turbostat_available = which('turbostat') is not None
+        
+        # Detect energy measurement method
+        self.energy_method = self._detect_energy_method()
         
         # Check capabilities
         self._check_capabilities()
@@ -84,6 +88,52 @@ class FrequencySweep:
         except Exception:
             return 'none'
     
+    def _detect_energy_method(self) -> str:
+        """
+        Detect available CPU energy measurement method.
+        
+        Returns:
+            Method name: 'rapl', 'turbostat', 'hwmon', or 'none'
+        """
+        # Method 1: RAPL (Sandy Bridge and newer Intel CPUs)
+        rapl_path = Path('/sys/class/powercap/intel-rapl:0/energy_uj')
+        if rapl_path.is_file() and os.access(rapl_path, os.R_OK):
+            return 'rapl'
+        
+        # Method 2: turbostat (works on older Intel CPUs, needs root)
+        if self.turbostat_available:
+            try:
+                # Test if turbostat works
+                result = subprocess.run(
+                    ['sudo', 'turbostat', '--quiet', '--show', 'PkgWatt', '--interval', '1', 'sleep', '0.1'],
+                    capture_output=True,
+                    text=True,
+                    timeout=3
+                )
+                if result.returncode == 0:
+                    return 'turbostat'
+            except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
+                pass
+        
+        # Method 3: hwmon sensors (AMD or fallback for Intel)
+        hwmon_path = Path('/sys/class/hwmon')
+        if hwmon_path.exists():
+            for hwmon_dev in hwmon_path.iterdir():
+                name_file = hwmon_dev / 'name'
+                if name_file.exists():
+                    try:
+                        driver_name = name_file.read_text().strip()
+                        # Check for energy sensors (AMD or some Intel)
+                        if any(x in driver_name for x in ['amd_energy', 'k10temp', 'zenpower']):
+                            for energy_file in hwmon_dev.glob('energy*_input'):
+                                if os.access(energy_file, os.R_OK):
+                                    return 'hwmon'
+                    except Exception:
+                        continue
+        
+        # Method 4: No direct measurement available
+        return 'none'
+    
     def _check_capabilities(self) -> None:
         """Check what monitoring tools are available"""
         print("=== Checking System Capabilities ===")
@@ -92,12 +142,19 @@ class FrequencySweep:
         print(f"GPU: {self.gpu_model}")
         print(f"perf: {'available' if self.perf_available else 'NOT FOUND'}")
         print(f"nvidia-smi: {'available' if self.nvidia_smi_available else 'NOT FOUND'}")
+        print(f"turbostat: {'available' if self.turbostat_available else 'NOT FOUND'}")
         
-        # Check RAPL
-        rapl_path = Path('/sys/class/powercap/intel-rapl:0/energy_uj')
-        rapl_readable = rapl_path.is_file() and os.access(rapl_path, os.R_OK)
-        print(f"RAPL: {'readable' if rapl_readable else 'NOT ACCESSIBLE'}")
+        # Report energy measurement method
+        energy_status = {
+            'rapl': '✓ RAPL (best - hardware counters)',
+            'turbostat': '✓ turbostat (good - kernel estimates)',
+            'hwmon': '✓ hwmon (basic - sensor readings)',
+            'none': '✗ No CPU energy measurement available'
+        }
+        print(f"CPU Energy Method: {energy_status.get(self.energy_method, 'unknown')}")
         
+        if self.energy_method == 'none':
+            print("WARNING: No CPU energy measurement. Will use time-only metrics.")
         if not self.perf_available:
             print("WARNING: perf not available. CPU metrics will be limited.")
         if not self.nvidia_smi_available:
@@ -194,7 +251,23 @@ class FrequencySweep:
             print("Continuing with current frequency...")
             return False
     
-    def read_rapl_energy(self) -> Optional[int]:
+    def read_cpu_energy(self) -> Optional[float]:
+        """
+        Read CPU energy using the best available method.
+        
+        Returns:
+            Energy snapshot (method-specific units), or None if unavailable
+        """
+        if self.energy_method == 'rapl':
+            return self._read_rapl_energy()
+        elif self.energy_method == 'turbostat':
+            return self._read_turbostat_power()
+        elif self.energy_method == 'hwmon':
+            return self._read_hwmon_energy()
+        else:
+            return None
+    
+    def _read_rapl_energy(self) -> Optional[int]:
         """
         Read CPU package energy from RAPL.
         
@@ -206,6 +279,55 @@ class FrequencySweep:
             return int(rapl_path.read_text().strip())
         except (IOError, OSError, ValueError):
             return None
+    
+    def _read_turbostat_power(self) -> Optional[float]:
+        """
+        Read instantaneous power from turbostat.
+        
+        Returns:
+            Power in watts, or None if unavailable
+        """
+        try:
+            # Run turbostat for a brief interval to get power reading
+            # Format: turbostat --quiet --show PkgWatt --interval 1 sleep 0.5
+            result = subprocess.run(
+                ['sudo', 'turbostat', '--quiet', '--show', 'PkgWatt', 
+                 '--interval', '1', 'sleep', '0.5'],
+                capture_output=True,
+                text=True,
+                timeout=3
+            )
+            
+            if result.returncode == 0:
+                # Parse output: "PkgWatt\n45.67\n"
+                lines = result.stdout.strip().split('\n')
+                if len(lines) >= 2:
+                    return float(lines[-1])
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, ValueError):
+            pass
+        return None
+    
+    def _read_hwmon_energy(self) -> Optional[int]:
+        """
+        Read CPU energy from hwmon sensors (AMD or some Intel systems).
+        
+        Returns:
+            Energy in microjoules, or None if unavailable
+        """
+        hwmon_path = Path('/sys/class/hwmon')
+        if hwmon_path.exists():
+            for hwmon_dev in hwmon_path.iterdir():
+                name_file = hwmon_dev / 'name'
+                if name_file.exists():
+                    try:
+                        driver_name = name_file.read_text().strip()
+                        if any(x in driver_name for x in ['amd_energy', 'k10temp', 'zenpower']):
+                            for energy_file in hwmon_dev.glob('energy*_input'):
+                                if os.access(energy_file, os.R_OK):
+                                    return int(energy_file.read_text().strip())
+                    except (IOError, OSError, ValueError):
+                        continue
+        return None
     
     def get_gpu_power(self, gpu_id: int = 0) -> Optional[float]:
         """
@@ -265,8 +387,8 @@ class FrequencySweep:
         
         print(f"  Running: {' '.join(benchmark_cmd)}")
         
-        # Read energy before
-        energy_start_cpu = self.read_rapl_energy()
+        # Read energy before (method-specific)
+        energy_start_cpu = self.read_cpu_energy()
         time_start = time.time()
         
         # Execute benchmark
@@ -280,20 +402,15 @@ class FrequencySweep:
             )
             
             time_end = time.time()
-            energy_end_cpu = self.read_rapl_energy()
+            energy_end_cpu = self.read_cpu_energy()
             
             # Calculate metrics
             metrics['time_s'] = time_end - time_start
             
-            # CPU energy
-            if energy_start_cpu is not None and energy_end_cpu is not None:
-                energy_uj = energy_end_cpu - energy_start_cpu
-                # Handle counter wraparound
-                if energy_uj < 0:
-                    energy_uj += 2**32
-                metrics['energy_J_cpu'] = energy_uj / 1e6
-            else:
-                metrics['energy_J_cpu'] = None
+            # CPU energy calculation (method-specific)
+            metrics['energy_J_cpu'] = self._calculate_cpu_energy(
+                energy_start_cpu, energy_end_cpu, metrics['time_s']
+            )
             
             # Parse perf output
             if self.perf_available:
@@ -324,6 +441,42 @@ class FrequencySweep:
             return None
         
         return metrics
+    
+    def _calculate_cpu_energy(self, energy_start: Optional[float], 
+                              energy_end: Optional[float], 
+                              time_s: float) -> Optional[float]:
+        """
+        Calculate CPU energy consumption based on measurement method.
+        
+        Args:
+            energy_start: Start measurement (method-specific units)
+            energy_end: End measurement (method-specific units)
+            time_s: Elapsed time in seconds
+            
+        Returns:
+            Energy in joules, or None if unavailable
+        """
+        if energy_start is None or energy_end is None:
+            return None
+        
+        if self.energy_method == 'rapl' or self.energy_method == 'hwmon':
+            # Counter-based: difference in microjoules
+            energy_uj = energy_end - energy_start
+            
+            # Handle counter wraparound (32-bit counter)
+            if energy_uj < 0:
+                energy_uj += 2**32
+            
+            return energy_uj / 1e6  # Convert µJ to J
+        
+        elif self.energy_method == 'turbostat':
+            # Power-based: average power × time
+            # energy_start and energy_end are instantaneous power readings in watts
+            avg_power_w = (energy_start + energy_end) / 2.0
+            return avg_power_w * time_s  # E = P × t
+        
+        else:
+            return None
     
     def _parse_perf_output(self, perf_output: str) -> Dict[str, Any]:
         """

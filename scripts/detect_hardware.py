@@ -177,6 +177,15 @@ class HardwareDetectorV2:
                     cpu['freq']['max_khz'] = int(max_file.read_text().strip())
             except Exception:
                 pass
+            
+            # Generate suggested frequencies if not available (e.g., pcc-cpufreq)
+            if 'available_frequencies' not in cpu['freq'] or not cpu['freq']['available_frequencies']:
+                if 'min_khz' in cpu['freq'] and 'max_khz' in cpu['freq']:
+                    cpu['freq']['suggested_frequencies'] = self._generate_cpu_frequency_points(
+                        cpu['freq']['min_khz'],
+                        cpu['freq']['max_khz']
+                    )
+                    cpu['freq']['frequency_note'] = f"Driver '{cpu['freq'].get('driver', 'unknown')}' does not expose available_frequencies. Suggested sweep points generated from min/max range."
         else:
             cpu['freq']['note'] = 'cpufreq sysfs not present'
 
@@ -320,6 +329,14 @@ class HardwareDetectorV2:
                         }
                         gpu['nvidia'].append(entry)
         
+        # Detect GPU frequency capabilities for NVIDIA GPUs
+        if gpu['nvidia'] and which('nvidia-smi'):
+            for gpu_entry in gpu['nvidia']:
+                if 'index' in gpu_entry:
+                    freq_info = self._detect_nvidia_frequencies(gpu_entry['index'])
+                    if freq_info:
+                        gpu_entry['frequency_info'] = freq_info
+        
         # Fallback: Use lspci if nvidia-smi didn't find GPUs or doesn't exist
         if not gpu['nvidia']:
             self._detect_gpu_via_lspci(gpu)
@@ -366,6 +383,104 @@ class HardwareDetectorV2:
                     gpu['intel'].append(intel_entry)
 
         self.info['gpu'] = gpu
+    
+    def _detect_nvidia_frequencies(self, gpu_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Detect NVIDIA GPU frequency information using nvidia-smi SUPPORTED_CLOCKS.
+        
+        Args:
+            gpu_id: GPU index (0-7)
+            
+        Returns:
+            Dictionary with frequency info, or None if detection fails
+        """
+        freq_info = {
+            'method': None,
+            'supported_clocks': None,
+            'notes': []
+        }
+        
+        # Try nvidia-smi -q -d SUPPORTED_CLOCKS
+        try:
+            cmd = ['nvidia-smi', '-i', str(gpu_id), '-q', '-d', 'SUPPORTED_CLOCKS']
+            rc, out, err = run_cmd(cmd)
+            
+            if rc == 0 and out and 'N/A' not in out:
+                # Parse supported clocks output
+                freq_info['method'] = 'nvidia-smi -q -d SUPPORTED_CLOCKS'
+                freq_info['supported_clocks'] = self._parse_supported_clocks(out)
+                if freq_info['supported_clocks']:
+                    return freq_info
+            else:
+                freq_info['notes'].append('nvidia-smi SUPPORTED_CLOCKS returned N/A or not available on this driver')
+        except Exception as e:
+            freq_info['notes'].append(f'nvidia-smi SUPPORTED_CLOCKS failed: {e}')
+        
+        return None
+    
+    def _parse_supported_clocks(self, output: str) -> Optional[List[Dict[str, int]]]:
+        """
+        Parse nvidia-smi SUPPORTED_CLOCKS output.
+        
+        Returns:
+            List of {memory_mhz, graphics_mhz} dicts
+        """
+        clocks = []
+        current_mem = None
+        
+        for line in output.split('\n'):
+            line = line.strip()
+            
+            # Look for "Memory : XXXX MHz"
+            if line.startswith('Memory'):
+                parts = line.split(':')
+                if len(parts) >= 2:
+                    try:
+                        current_mem = int(parts[1].strip().split()[0])
+                    except (ValueError, IndexError):
+                        pass
+            
+            # Look for "Graphics : XXXX MHz"
+            elif line.startswith('Graphics') and current_mem:
+                parts = line.split(':')
+                if len(parts) >= 2:
+                    try:
+                        graphics = int(parts[1].strip().split()[0])
+                        clocks.append({
+                            'memory_mhz': current_mem,
+                            'graphics_mhz': graphics
+                        })
+                    except (ValueError, IndexError):
+                        pass
+        
+        return clocks if clocks else None
+    
+    def _generate_cpu_frequency_points(self, min_khz: int, max_khz: int, num_points: int = 5) -> List[int]:
+        """
+        Generate evenly spaced CPU frequency points for sweep.
+        
+        Args:
+            min_khz: Minimum frequency in kHz
+            max_khz: Maximum frequency in kHz
+            num_points: Number of frequency points to generate (default: 5)
+            
+        Returns:
+            List of frequencies in kHz, evenly distributed
+        """
+        if min_khz >= max_khz:
+            return [min_khz]
+        
+        step = (max_khz - min_khz) / (num_points - 1)
+        freqs = [int(min_khz + i * step) for i in range(num_points)]
+        
+        # Round to nearest 100 MHz for cleaner values
+        freqs = [round(f / 100000) * 100000 for f in freqs]
+        
+        # Ensure min and max are included
+        freqs[0] = min_khz
+        freqs[-1] = max_khz
+        
+        return freqs
 
     def _detect_gpu_via_lspci(self, gpu: Dict[str, List[Dict[str, Any]]]) -> None:
         """Fallback GPU detection using lspci (works without nvidia-smi)"""

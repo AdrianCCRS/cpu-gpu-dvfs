@@ -1,7 +1,7 @@
 {
-  "description": "Example frequency sweep configuration for Proyecto 10",
-  "cpu_frequencies": [1200, 1600, 2000, 2400, 2800, 3200],
-  "gpu_frequencies": [500, 700, 900, 1100, 1300, 1500],
+  "description": "Frequency sweep configuration for guane15 (Xeon E5645 - Westmere, pcc-cpufreq driver)",
+  "cpu_frequencies": [1600, 1800, 2000, 2200, 2400],
+  "gpu_frequencies": [405, 475, 550, 625, 700],
   "benchmarks": [
     {
       "name": "dot_product",
@@ -33,5 +33,5 @@
   ],
   "repetitions": 5,
   "output_file": "data/frequency_sweep_results.csv",
-  "notes": "6 CPU freqs × 6 GPU freqs × 4 benchmarks × 5 sizes × 5 reps = 3600 experiments"
+  "notes": "Adapted for guane15.uis.edu.co: Xeon E5645 (Westmere, 2010) with 8x Tesla M2075 (Fermi GF110). CPU: pcc-cpufreq driver, 1.6-2.4 GHz. GPU: Base 575 MHz, typical range 405-700 MHz. 5 CPU × 5 GPU × 4 benchmarks × 5 sizes × 5 reps = 2500 experiments. IMPORTANT: Verify actual GPU frequency support with 'nvidia-smi -q -d SUPPORTED_CLOCKS' before running. Old Tesla cards may have limited frequency steps."
 }
