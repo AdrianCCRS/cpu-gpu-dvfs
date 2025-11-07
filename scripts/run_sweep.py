@@ -45,11 +45,15 @@ class FrequencySweep:
         self.config = config
         self.hostname = self._get_hostname()
         self.cpu_model = self._get_cpu_model()
-        self.gpu_model = self._get_gpu_model()
-        self.output_file = config.get('output_file', 'dataset.csv')
+        
+        # Check tool availability before using them
         self.perf_available = which('perf') is not None
         self.nvidia_smi_available = which('nvidia-smi') is not None
         self.turbostat_available = which('turbostat') is not None
+        
+        # Now we can safely call _get_gpu_model()
+        self.gpu_model = self._get_gpu_model()
+        self.output_file = config.get('output_file', 'dataset.csv')
         
         # Detect energy measurement method
         self.energy_method = self._detect_energy_method()
